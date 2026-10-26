@@ -1,0 +1,18 @@
+services:
+  checkindex-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: checkindex-dashboard
+    restart: unless-stopped
+    ports:
+      - "${PORT:-6767}:${PORT:-6767}"
+    environment:
+      - CHECKINDEX_DASHBOARD_LISTEN_ADDR=${CHECKINDEX_DASHBOARD_LISTEN_ADDR:-0.0.0.0:${PORT:-6767}}
+      - CHECKINDEX_DASHBOARD_REFRESH_INTERVAL=${CHECKINDEX_DASHBOARD_REFRESH_INTERVAL:-60s}
+    volumes:
+      # Mount host checkIndex config for MongoDB profiles access
+      - ${HOME}/.checkIndex:/home/appuser/.checkIndex
+    extra_hosts:
+      # Enable connecting to host MongoDB via host.docker.internal
+      - "host.docker.internal:host-gateway"
