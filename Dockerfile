@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Stage 1: Build the Go binary
-FROM golang:alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:alpine AS builder
 
 WORKDIR /app
 
@@ -15,8 +15,12 @@ RUN go mod download
 # Copy application source code
 COPY . .
 
-# Build static binary without CGO dependencies
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/checkindex-dashboard ./cmd/checkindex-dashboard
+# Target platform arguments provided automatically by docker buildx
+ARG TARGETOS
+ARG TARGETARCH
+
+# Build static binary using native Go cross-compilation without CGO
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /app/checkindex-dashboard ./cmd/checkindex-dashboard
 
 # Stage 2: Minimal runtime image
 FROM alpine:latest

@@ -8,15 +8,63 @@ A local Go web application that displays the index-usage reports returned by the
 - Complete the existing checkIndex setup before starting the dashboard. At runtime, the library reads `$HOME/.checkIndex/config.json` and may create a starter configuration if the file is absent. Configure MongoDB access through checkIndex's supported setup flow; do not put credentials in this application's environment variables or source code.
 - MongoDB connectivity for the configured profiles when the dashboard is running. Starting the application begins report collection.
 
-## Run locally
+## Quick Start with Docker (Recommended)
 
-From this directory, start the application with:
+You don't need to clone the repository or install Go. Pull and run the pre-built image directly from Docker Hub:
+
+```sh
+docker run -d \
+  --name checkindex-dashboard \
+  --restart unless-stopped \
+  -p 6767:6767 \
+  -v "${HOME}/.checkIndex:/home/appuser/.checkIndex" \
+  --add-host host.docker.internal:host-gateway \
+  mrcl29/checkindex-dashboard:latest
+```
+
+Open <http://localhost:6767> in your browser.
+
+- `-v "${HOME}/.checkIndex:/home/appuser/.checkIndex"`: Mounts your local checkIndex configuration so profile settings persist across restarts.
+- `--add-host host.docker.internal:host-gateway`: Allows the container to connect to local MongoDB instances using `host.docker.internal`.
+- Open the in-dashboard **⚙️ Configuration** panel to configure database profiles directly from your browser without manually editing files.
+
+To view logs or stop the container:
+
+```sh
+docker logs -f checkindex-dashboard
+docker stop checkindex-dashboard
+```
+
+## Run with Docker Compose
+
+If you prefer Docker Compose:
+
+```sh
+docker compose up -d
+```
+
+Open <http://localhost:6767> (or your custom port defined in `.env`).
+
+To stop:
+
+```sh
+docker compose down
+```
+
+## Run Locally from Source
+
+### Prerequisites
+
+- Go 1.27.3 or newer.
+- MongoDB connectivity for configured profiles.
+
+From this directory:
 
 ```sh
 go run ./cmd/checkindex-dashboard
 ```
 
-The default listener is `127.0.0.1:6767`; open <http://127.0.0.1:6767>. The first report collection starts in the background, and the page refreshes every 60 seconds. `Ctrl+C` and `SIGTERM` trigger graceful HTTP shutdown.
+The default listener is `127.0.0.1:6767`; open <http://127.0.0.1:6767>. `Ctrl+C` and `SIGTERM` trigger graceful HTTP shutdown.
 
 ## Configuration with .env
 
@@ -33,29 +81,6 @@ PORT=80
 ```
 
 Both local Go runs (`go run`) and Docker Compose automatically load the `.env` file.
-
-## Run with Docker / Docker Compose
-
-To run the containerized dashboard exposed locally on port `6767` (or the port defined in `.env`):
-
-```sh
-docker compose up -d
-```
-
-Open <http://localhost:6767> (or your custom port) in your browser.
-
-To stop the container:
-
-```sh
-docker compose down
-```
-
-Alternatively, build and run directly with Docker:
-
-```sh
-docker build -t checkindex-dashboard .
-docker run -d --name checkindex-dashboard -p 6767:6767 -v "${HOME}/.checkIndex:/home/appuser/.checkIndex" checkindex-dashboard
-```
 
 ## In-UI Configuration
 

@@ -110,4 +110,3 @@ func TestConfigAPIValidationRejections(t *testing.T) {
 		t.Error("expected error for missing initialUri")
 	}
 }
-

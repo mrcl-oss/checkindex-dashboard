@@ -203,4 +203,3 @@ func defaultStarterConfig() ConfigDTO {
 		},
 	}
 }
-
