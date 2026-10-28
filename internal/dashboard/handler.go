@@ -45,6 +45,8 @@ const dashboardPage = `<!doctype html>
     .live-dot { width: 7px; height: 7px; background-color: #16a34a; border-radius: 50%; }
     .btn-config { display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .65rem; font-size: .85rem; font-weight: 600; color: #1e293b; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: .3rem; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
     .btn-config:hover { background: #e2e8f0; border-color: #94a3b8; }
+    .btn-download { display: inline-flex; align-items: center; padding: .25rem .65rem; font-size: .85rem; font-weight: 600; color: #1e293b; background: #fff; border: 1px solid #cbd5e1; border-radius: .3rem; text-decoration: none; }
+    .btn-download:hover { background: #f1f5f9; border-color: #94a3b8; }
     .modal-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(2px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; box-sizing: border-box; }
     .modal-backdrop[hidden] { display: none !important; }
     .modal-dialog { background: #ffffff; border-radius: .75rem; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2), 0 8px 10px -6px rgba(0,0,0,0.1); width: 100%; max-width: 820px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #cbd5e1; }
@@ -199,6 +201,7 @@ const dashboardPage = `<!doctype html>
             <option value="0">Never (reload only)</option>
           </select>
           <span class="live-pill" id="live-indicator"><span class="live-dot"></span><span id="live-pill-text">Live</span></span>
+          <a href="/download/report.json" class="btn-download" aria-label="Download latest report as JSON">Download JSON</a>
           <button type="button" id="btn-open-config" class="btn-config" aria-label="Open Configuration">⚙️ Configuration</button>
         </div>
       </div>
@@ -1192,6 +1195,15 @@ func NewHandlerWithConfig(service *Service, interval time.Duration, configPath s
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		if r.URL.Path == "/download/report.json" {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.Header().Set("Content-Disposition", `attachment; filename="checkindex-report.json"`)
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			_ = json.NewEncoder(w).Encode(service.Snapshot().Report)
 			return
 		}
 

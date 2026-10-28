@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"html"
 	"net/http"
@@ -314,6 +315,79 @@ func TestHandlerServesJSONSnapshot(t *testing.T) {
 		if !strings.Contains(body, `"cluster-a"`) || !strings.Contains(body, `"users"`) || !strings.Contains(body, `"id_1"`) {
 			t.Errorf("JSON response %q missing expected cluster/collection/index keys", body)
 		}
+	}
+}
+
+func TestHandlerDownloadsCachedRawReport(t *testing.T) {
+	collectionReport := report.Report{
+		Collections: map[string]report.Collection{
+			"users": {
+				"id_1": {
+					Clusters: map[string]report.Cluster{
+						"cluster-a": {
+							Nodes: map[string]report.NodeUsage{
+								"node-a": {Count: 42, Primary: true},
+							},
+							Total: 42,
+						},
+					},
+					Total: 42,
+				},
+			},
+		},
+		Partial: true,
+	}
+	collectorCalls := 0
+	service := NewService(func(context.Context) (report.Report, error) {
+		collectorCalls++
+		return collectionReport, nil
+	}, time.Minute)
+	if err := service.Refresh(context.Background()); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	handler := NewHandler(service)
+	download := httptest.NewRecorder()
+	handler.ServeHTTP(download, httptest.NewRequest(http.MethodGet, "/download/report.json", nil))
+	if download.Code != http.StatusOK {
+		t.Fatalf("download status = %d, want %d", download.Code, http.StatusOK)
+	}
+	if got := download.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
+		t.Errorf("download Content-Type = %q", got)
+	}
+	if got := download.Header().Get("Content-Disposition"); got != `attachment; filename="checkindex-report.json"` {
+		t.Errorf("download Content-Disposition = %q", got)
+	}
+	expected, err := json.Marshal(collectionReport)
+	if err != nil {
+		t.Fatalf("json.Marshal(report) error = %v", err)
+	}
+	if got := strings.TrimSpace(download.Body.String()); got != string(expected) {
+		t.Errorf("download body = %s, want raw report JSON %s", got, expected)
+	}
+	if collectorCalls != 1 {
+		t.Errorf("collector calls = %d, want 1 (download must use cached report)", collectorCalls)
+	}
+
+	page := httptest.NewRecorder()
+	handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/", nil))
+	if page.Code != http.StatusOK {
+		t.Fatalf("dashboard status = %d, want %d", page.Code, http.StatusOK)
+	}
+	if !strings.Contains(page.Body.String(), `href="/download/report.json"`) {
+		t.Error("dashboard is missing the report download control")
+	}
+
+	emptyService := NewService(func(context.Context) (report.Report, error) {
+		return report.Report{Collections: map[string]report.Collection{}}, nil
+	}, time.Minute)
+	if err := emptyService.Refresh(context.Background()); err != nil {
+		t.Fatalf("empty Refresh() error = %v", err)
+	}
+	emptyDownload := httptest.NewRecorder()
+	NewHandler(emptyService).ServeHTTP(emptyDownload, httptest.NewRequest(http.MethodGet, "/download/report.json", nil))
+	if got := strings.TrimSpace(emptyDownload.Body.String()); got != `{}` {
+		t.Errorf("empty report body = %q, want {}", got)
 	}
 }
 
