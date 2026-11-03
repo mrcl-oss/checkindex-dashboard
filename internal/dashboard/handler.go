@@ -189,6 +189,9 @@ const dashboardPage = `<!doctype html>
           <label class="filter-toggle-label">
             <input type="checkbox" id="filter-exact"> Exact match
           </label>
+          <label class="filter-toggle-label">
+            <input type="checkbox" id="filter-unused"> Only unused (0 uses)
+          </label>
         </div>
         <div class="refresh-box">
           <label for="refresh-interval-select">Refresh:</label>
@@ -278,6 +281,7 @@ const dashboardPage = `<!doctype html>
               <div class="level-toolbar collections-toolbar">
                 <span class="level-badge level-badge-collection">Collections Level</span>
                 <button type="button" class="btn-toggle-level" data-action="toggle-cluster-collections">Toggle all collections</button>
+                <button type="button" class="btn-toggle-level" data-action="toggle-cluster-indexes">Toggle all indexes</button>
               </div>
               {{range $coi, $col := $cluster.Collections}}
               <details id="cluster-{{$ci}}-col-{{$coi}}" class="collection" data-name="{{$col.Name}}" data-path="col:{{$cluster.Name}}/{{$col.Name}}">
@@ -288,7 +292,7 @@ const dashboardPage = `<!doctype html>
                     <button type="button" class="btn-toggle-level" data-action="toggle-collection-indexes">Toggle all indexes</button>
                   </div>
                   {{range $ii, $idx := $col.Indexes}}
-                  <details id="cluster-{{$ci}}-col-{{$coi}}-idx-{{$ii}}" class="index" data-name="{{$idx.Name}}" data-path="idx:{{$cluster.Name}}/{{$col.Name}}/{{$idx.Name}}">
+                  <details id="cluster-{{$ci}}-col-{{$coi}}-idx-{{$ii}}" class="index" data-name="{{$idx.Name}}" data-total="{{$idx.Total}}" data-path="idx:{{$cluster.Name}}/{{$col.Name}}/{{$idx.Name}}">
                     <summary><h4>{{$idx.Name}}</h4></summary>
                     <div class="index-body">
                       <p class="cluster-total">Total: <data value="{{.Total}}">{{.Total}}</data></p>
@@ -395,6 +399,7 @@ const dashboardPage = `<!doctype html>
       var filterInput = document.getElementById('filter-input');
       var filterCase = document.getElementById('filter-case');
       var filterExact = document.getElementById('filter-exact');
+      var filterUnused = document.getElementById('filter-unused');
       var noResults = document.getElementById('filter-no-results');
 
       function matchesName(name, query, isCase, isExact) {
@@ -412,13 +417,14 @@ const dashboardPage = `<!doctype html>
         var rawQuery = filterInput.value.trim();
         var isCase = filterCase ? filterCase.checked : false;
         var isExact = filterExact ? filterExact.checked : false;
+        var onlyUnused = filterUnused ? filterUnused.checked : false;
         var query = rawQuery;
 
         var clusters = document.querySelectorAll('.clusters-container > details.cluster');
         var tocClusters = document.querySelectorAll('.sidebar-toc > details.toc-cluster');
         var anyClusterVisible = false;
 
-        if (!query) {
+        if (!query && !onlyUnused) {
           if (noResults) noResults.hidden = true;
           clusters.forEach(function(cluster) {
             cluster.hidden = false;
@@ -444,7 +450,13 @@ const dashboardPage = `<!doctype html>
           return;
         }
 
-        try { sessionStorage.setItem('dashboard_filter', rawQuery); } catch(e) {}
+        try {
+          if (query) {
+            sessionStorage.setItem('dashboard_filter', rawQuery);
+          } else {
+            sessionStorage.removeItem('dashboard_filter');
+          }
+        } catch(e) {}
 
         clusters.forEach(function(cluster, ci) {
           var clusterName = cluster.getAttribute('data-name') || '';
@@ -456,20 +468,27 @@ const dashboardPage = `<!doctype html>
             var collectionName = collection.getAttribute('data-name') || '';
             var collectionMatches = matchesName(collectionName, query, isCase, isExact);
             var collectionHasMatchingChild = false;
+            var collectionHasVisibleIndex = false;
 
             var indexes = collection.querySelectorAll('details.index');
             indexes.forEach(function(index) {
               var indexName = index.getAttribute('data-name') || '';
               var indexMatches = matchesName(indexName, query, isCase, isExact);
+              var isUnused = index.getAttribute('data-total') === '0';
 
-              var showIndex = indexMatches || collectionMatches || clusterMatches;
+              var showIndex = (indexMatches || collectionMatches || clusterMatches) && (!onlyUnused || isUnused);
               index.hidden = !showIndex;
-              if (indexMatches) {
+              if (showIndex) {
+                collectionHasVisibleIndex = true;
+              }
+              if (indexMatches && showIndex) {
                 collectionHasMatchingChild = true;
               }
             });
 
-            var showCollection = collectionMatches || collectionHasMatchingChild || clusterMatches;
+            var showCollection = onlyUnused
+              ? collectionHasVisibleIndex
+              : (collectionMatches || collectionHasMatchingChild || clusterMatches);
             collection.hidden = !showCollection;
             if (showCollection) {
               clusterHasMatchingChild = true;
@@ -479,7 +498,9 @@ const dashboardPage = `<!doctype html>
             }
           });
 
-          var showCluster = clusterMatches || clusterHasMatchingChild;
+          var showCluster = onlyUnused
+            ? clusterHasMatchingChild
+            : (clusterMatches || clusterHasMatchingChild);
           cluster.hidden = !showCluster;
           if (showCluster) {
             cluster.open = true;
@@ -535,6 +556,12 @@ const dashboardPage = `<!doctype html>
           applyFilter();
         });
       }
+      if (filterUnused) {
+        filterUnused.addEventListener('change', function() {
+          try { sessionStorage.setItem('dashboard_filter_unused', filterUnused.checked); } catch(e) {}
+          applyFilter();
+        });
+      }
 
       // Restore filter options
       try {
@@ -544,9 +571,14 @@ const dashboardPage = `<!doctype html>
         if (filterExact && sessionStorage.getItem('dashboard_filter_exact') === 'true') {
           filterExact.checked = true;
         }
+        if (filterUnused && sessionStorage.getItem('dashboard_filter_unused') === 'true') {
+          filterUnused.checked = true;
+        }
         var savedFilter = sessionStorage.getItem('dashboard_filter');
         if (savedFilter && filterInput) {
           filterInput.value = savedFilter;
+        }
+        if ((savedFilter && filterInput) || (filterUnused && filterUnused.checked)) {
           applyFilter();
         }
       } catch(e) {}
@@ -568,6 +600,16 @@ const dashboardPage = `<!doctype html>
             var collections = clusterEl.querySelectorAll('.cluster-body > details.collection');
             var anyClosed = Array.from(collections).some(function(d) { return !d.open; });
             collections.forEach(function(d) { d.open = anyClosed; });
+          }
+        } else if (action === 'toggle-cluster-indexes') {
+          var clusterIdxEl = btn.closest('details.cluster');
+          if (clusterIdxEl) {
+            var clusterIndexes = clusterIdxEl.querySelectorAll('.cluster-body > details.collection > .collection-body > details.index');
+            var anyClosed = Array.from(clusterIndexes).some(function(d) { return !d.open; });
+            clusterIndexes.forEach(function(d) { d.open = anyClosed; });
+            if (anyClosed) {
+              clusterIdxEl.querySelectorAll('.cluster-body > details.collection').forEach(function(d) { d.open = true; });
+            }
           }
         } else if (action === 'toggle-collection-indexes') {
           var colEl = btn.closest('details.collection');
